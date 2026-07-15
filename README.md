@@ -23,6 +23,14 @@ You also need `~/.fastdb.ini` with your credentials (permissions must be `chmod 
 from export import export
 ```
 
+### Export everything
+
+Calling with no search criteria returns all objects in the database:
+
+```python
+nf = export('out.parquet')
+```
+
 ### Query by search criteria
 
 Pass any [objectsearch](https://fastdb.readthedocs.io) parameters as keyword arguments:
