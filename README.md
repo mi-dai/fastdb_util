@@ -10,10 +10,11 @@ pip install nested-pandas
 
 `fastdb_client` is not on PyPI — clone [LSSTDESC/FASTDB](https://github.com/LSSTDESC/FASTDB) and add its `client/` directory to your Python path:
 
-```python
-import sys
-sys.path.insert(0, '/path/to/FASTDB/client')
+```bash
+export PYTHONPATH=/path/to/FASTDB/client:$PYTHONPATH
 ```
+
+Add this to `~/.zshrc` (or `~/.bashrc`) to make it permanent.
 
 You also need `~/.fastdb.ini` with your credentials (permissions must be `chmod go-rwx ~/.fastdb.ini`).
 
