@@ -68,7 +68,7 @@ def build_nested_frame(response, base_columns=None, nested_columns=None):
 def _write_chunk(fdb, rootids, path, base_columns, nested_columns):
     response = fetch_lightcurves(fdb, rootids)
     nf = build_nested_frame(response, base_columns=base_columns, nested_columns=nested_columns)
-    pd.DataFrame.to_parquet(nf, path)
+    nf.to_parquet(path)
 
 def export(
     output_path,

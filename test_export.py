@@ -101,7 +101,7 @@ def test_mjd_binned_column_filter(tmp_path_factory, fdb):
         nested_columns=["mjd", "flux", "fluxerr", "band"],
     )
     nf = read_parquet(path)
-    assert set(nf.columns) == {"ra", "dec", "lightcurve"}
+    assert set(nf.columns) == {"rootid", "ra", "dec", "lightcurve"}
     import pandas as pd
     lc = pd.DataFrame(nf.iloc[0]["lightcurve"])
     assert set(lc.columns) == {"mjd", "flux", "fluxerr", "band"}
