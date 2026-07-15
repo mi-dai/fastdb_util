@@ -1,2 +1,4 @@
 __pycache__/
 *.parquet
+*.pkl
+test_output/

@@ -1,17 +1,27 @@
+import glob
 import os
 import shutil
 
+import pandas as pd
 import pytest
 
 from nested_pandas import NestedFrame, read_parquet
 from fastdb_client import FASTDBClient
 
-from export import export
+from export import export, fetch_rootids
 
 MJD_MIN = 61150
 MJD_MAX = 61161
 MJD_SINGLE_DAY_MIN = 61160
 MJD_SINGLE_DAY_MAX = 61161
+
+TEST_OUTPUT = os.path.join(os.path.dirname(__file__), "test_output")
+
+
+def output_path(*parts):
+    path = os.path.join(TEST_OUTPUT, *parts)
+    os.makedirs(os.path.dirname(path) if "." in os.path.basename(path) else path, exist_ok=True)
+    return path
 
 
 @pytest.fixture(scope="module")
@@ -20,20 +30,22 @@ def fdb():
 
 
 @pytest.fixture(scope="module")
-def single_file(tmp_path_factory, fdb):
-    path = str(tmp_path_factory.mktemp("single") / "out.parquet")
+def single_file(fdb):
+    path = output_path("single", "out.parquet")
     return export(path, fdb=fdb, firstdet_mjd_min=MJD_SINGLE_DAY_MIN, firstdet_mjd_max=MJD_SINGLE_DAY_MAX)
 
 
 @pytest.fixture(scope="module")
-def chunked_dir(tmp_path_factory, fdb):
-    path = str(tmp_path_factory.mktemp("chunked"))
+def chunked_dir(fdb):
+    path = output_path("chunked")
+    shutil.rmtree(path, ignore_errors=True)
     return export(path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX, chunk_size=3)
 
 
 @pytest.fixture(scope="module")
-def mjd_binned_dir(tmp_path_factory, fdb):
-    path = str(tmp_path_factory.mktemp("mjd_binned"))
+def mjd_binned_dir(fdb):
+    path = output_path("mjd_binned")
+    shutil.rmtree(path, ignore_errors=True)
     return export(path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX, mjd_bin_size=1.0)
 
 
@@ -53,7 +65,6 @@ def test_single_file_has_position_columns(single_file):
     assert "dec" in single_file.columns
 
 def test_single_file_nested_has_mjd_flux_band(single_file):
-    import pandas as pd
     lc = pd.DataFrame(single_file.iloc[0]["lightcurve"])
     assert {"mjd", "flux", "fluxerr", "band"}.issubset(lc.columns)
 
@@ -68,7 +79,6 @@ def test_chunked_files_exist(chunked_dir):
     assert any(f.startswith("chunk_") and f.endswith(".parquet") for f in files)
 
 def test_chunked_readable(chunked_dir):
-    import glob
     files = sorted(glob.glob(os.path.join(chunked_dir, "*.parquet")))
     assert len(files) > 0
     for f in files:
@@ -91,8 +101,9 @@ def test_mjd_binned_readable(mjd_binned_dir):
     assert isinstance(nf, NestedFrame)
     assert len(nf) > 0
 
-def test_mjd_binned_column_filter(tmp_path_factory, fdb):
-    path = str(tmp_path_factory.mktemp("col_filter"))
+def test_mjd_binned_column_filter(fdb):
+    path = output_path("col_filter")
+    shutil.rmtree(path, ignore_errors=True)
     export(
         path, fdb=fdb,
         firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX,
@@ -102,18 +113,16 @@ def test_mjd_binned_column_filter(tmp_path_factory, fdb):
     )
     nf = read_parquet(path)
     assert set(nf.columns) == {"rootid", "ra", "dec", "lightcurve"}
-    import pandas as pd
     lc = pd.DataFrame(nf.iloc[0]["lightcurve"])
     assert set(lc.columns) == {"mjd", "flux", "fluxerr", "band"}
 
 
 # --- explicit rootids ---
 
-def test_explicit_rootids(tmp_path_factory, fdb):
-    from export import fetch_rootids
+def test_explicit_rootids(fdb):
     result = fetch_rootids(fdb, firstdet_mjd_min=MJD_SINGLE_DAY_MIN, firstdet_mjd_max=MJD_SINGLE_DAY_MAX)
     rootids = result["rootid"][:3]
-    path = str(tmp_path_factory.mktemp("explicit") / "out.parquet")
+    path = output_path("explicit", "out.parquet")
     nf = export(path, fdb=fdb, rootids=rootids)
     assert isinstance(nf, NestedFrame)
     assert len(nf) == 3
@@ -122,6 +131,7 @@ def test_explicit_rootids(tmp_path_factory, fdb):
 # --- empty result ---
 
 def test_empty_result_returns_empty_frame(fdb):
-    nf = export("/tmp/empty.parquet", fdb=fdb, firstdet_mjd_min=99999, firstdet_mjd_max=99999)
+    path = output_path("empty", "out.parquet")
+    nf = export(path, fdb=fdb, firstdet_mjd_min=99999, firstdet_mjd_max=99999)
     assert isinstance(nf, NestedFrame)
     assert len(nf) == 0
