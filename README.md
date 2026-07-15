@@ -79,15 +79,38 @@ fdb = FASTDBClient('production')
 nf = export('out.parquet', fdb=fdb, firstdet_mjd_min=61160)
 ```
 
-## Output
+### Chunked export
 
-`export` returns a `NestedFrame` and writes it to Parquet. Each row is one object; the `lightcurve` column contains a nested per-visit table with columns including `mjd`, `flux`, `fluxerr`, `band`, `isdet`, `ispatch`, and per-source positions (`det_ra`, `det_dec`, …).
+For large exports, use `chunk_size` or `mjd_bin_size` to write one parquet file per chunk into a directory instead of loading everything into memory at once.
+
+**Count-based chunks** — splits rootids into groups of N:
 
 ```python
-import pandas as pd
-from nested_pandas import NestedFrame
+path = export('out_dir/', chunk_size=1000)
+# → out_dir/chunk_0000.parquet, chunk_0001.parquet, …
+```
 
-nf = NestedFrame(pd.read_parquet('out.parquet'))
+**MJD-binned chunks** — groups objects by `firstdet_mjd` window:
+
+```python
+path = export('out_dir/', mjd_bin_size=1.0)   # one file per day
+# → out_dir/mjd_61160_61161.parquet, mjd_61161_61162.parquet, …
+```
+
+When chunking, `export` returns the output directory path (a string) rather than a `NestedFrame`, so the full dataset is never loaded into memory. Read individual files as needed:
+
+```python
+from nested_pandas import read_parquet
+nf = read_parquet('out_dir/mjd_61160_61161.parquet')
+```
+
+## Output
+
+`export` returns a `NestedFrame` (single-file) or a directory path (chunked). Each row is one object; the `lightcurve` column contains a nested per-visit table with columns including `mjd`, `flux`, `fluxerr`, `band`, `isdet`, `ispatch`, and per-source positions (`det_ra`, `det_dec`, …).
+
+```python
+from nested_pandas import read_parquet
+nf = read_parquet('out.parquet')
 nf['lightcurve']   # nested per-visit data
 ```
 
