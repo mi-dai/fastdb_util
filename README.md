@@ -105,6 +105,23 @@ from nested_pandas import read_parquet
 nf = read_parquet('out_dir/mjd_61160_61161.parquet')
 ```
 
+### Logging
+
+Progress is emitted via Python's `logging` module. Enable it by configuring the root logger before calling `export`:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+```
+
+This prints the total object count and progress every 100 objects. Change the frequency with `log_every`:
+
+```python
+nf = export('out.parquet', firstdet_mjd_min=61160, log_every=500)
+```
+
+Set `log_every=None` to suppress progress messages.
+
 ## Output
 
 `export` returns a `NestedFrame` (single-file) or a directory path (chunked). Each row is one object; the `lightcurve` column contains a nested per-visit table with columns including `mjd`, `flux`, `fluxerr`, `band`, `isdet`, `ispatch`, and per-source positions (`det_ra`, `det_dec`, …).
