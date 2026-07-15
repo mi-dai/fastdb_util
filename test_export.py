@@ -1,10 +1,7 @@
 import os
 import shutil
-import sys
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../FASTDB/client'))
 
 from nested_pandas import NestedFrame, read_parquet
 from fastdb_client import FASTDBClient
