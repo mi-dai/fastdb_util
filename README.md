@@ -98,6 +98,15 @@ path = export('out_dir/', mjd_bin_size=1.0)   # one file per day
 # → out_dir/mjd_61160_61161.parquet, mjd_61161_61162.parquet, …
 ```
 
+**Combined** — MJD bins with a per-bin count cap. Bins larger than `chunk_size` are split into numbered sub-files:
+
+```python
+path = export('out_dir/', mjd_bin_size=1.0, chunk_size=1000)
+# → out_dir/mjd_61160_61161.parquet          (if bin ≤ 1000 objects)
+# → out_dir/mjd_61161_61162_0000.parquet     (if bin > 1000 objects)
+#    out_dir/mjd_61161_61162_0001.parquet
+```
+
 When chunking, `export` returns the output directory path (a string) rather than a `NestedFrame`, so the full dataset is never loaded into memory. Read individual files as needed:
 
 ```python

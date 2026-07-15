@@ -109,19 +109,24 @@ def export(
     saved = 0
 
     if mjd_bin_size is not None and search_result is not None:
-        # Group rootids by firstdet_mjd bin
+        # Group rootids by firstdet_mjd bin, then sub-chunk by count if needed
         mjds = search_result["firstdet_mjd"]
         bins = {}
         for rid, mjd in zip(rootids, mjds):
             bin_start = math.floor(mjd / mjd_bin_size) * mjd_bin_size
             bins.setdefault(bin_start, []).append(rid)
-        for bin_start, chunk in sorted(bins.items()):
+        for bin_start, bin_rids in sorted(bins.items()):
             bin_end = bin_start + mjd_bin_size
-            fname = f"mjd_{bin_start:.0f}_{bin_end:.0f}.parquet"
-            _write_chunk(fdb, chunk, os.path.join(output_path, fname), base_columns, nested_columns)
-            saved += len(chunk)
-            if log_every and (saved % log_every < len(chunk) or saved == total):
-                logger.info("Saved %d/%d objects", saved, total)
+            sub_chunks = [bin_rids[i:i + chunk_size] for i in range(0, len(bin_rids), chunk_size)]
+            for j, chunk in enumerate(sub_chunks):
+                if len(sub_chunks) == 1:
+                    fname = f"mjd_{bin_start:.0f}_{bin_end:.0f}.parquet"
+                else:
+                    fname = f"mjd_{bin_start:.0f}_{bin_end:.0f}_{j:04d}.parquet"
+                _write_chunk(fdb, chunk, os.path.join(output_path, fname), base_columns, nested_columns)
+                saved += len(chunk)
+                if log_every and (saved % log_every < len(chunk) or saved == total):
+                    logger.info("Saved %d/%d objects", saved, total)
     else:
         # Count-based chunking
         chunks = [rootids[i:i + chunk_size] for i in range(0, len(rootids), chunk_size)]

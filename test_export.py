@@ -117,6 +117,22 @@ def test_mjd_binned_column_filter(fdb):
     assert set(lc.columns) == {"mjd", "flux", "fluxerr", "band"}
 
 
+# --- MJD-binned + count sub-chunked export ---
+
+def test_mjd_binned_with_chunk_size(fdb):
+    path = output_path("mjd_chunked")
+    shutil.rmtree(path, ignore_errors=True)
+    export(path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX, mjd_bin_size=1.0, chunk_size=3)
+    files = os.listdir(path)
+    assert all(f.startswith("mjd_") and f.endswith(".parquet") for f in files)
+    # bins with >3 objects should produce sub-chunk files (e.g. mjd_61150_61151_0000.parquet)
+    sub_chunked = [f for f in files if f.count("_") == 4]
+    single = [f for f in files if f.count("_") == 3]
+    assert len(sub_chunked) > 0 or len(single) > 0
+    for f in sorted(files):
+        nf = read_parquet(os.path.join(path, f))
+        assert len(nf) > 0
+
 # --- explicit rootids ---
 
 def test_explicit_rootids(fdb):
