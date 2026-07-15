@@ -36,8 +36,14 @@ def build_nested_frame(response, base_columns=None, nested_columns=None):
 
     # Preserve integer ID columns as nullable int64 so parquet schema is
     # consistent across chunks even when all values in a chunk are null.
+    _INT64_COLUMNS = {
+        "diasourceid", "diaforcedsourceid", "source_diaobjectid",
+        "forced_diaobjectid", "visit",
+    }
     for col in flat_df.columns:
-        if flat_df[col].dtype == "float64":
+        if col in _INT64_COLUMNS:
+            flat_df[col] = flat_df[col].astype(pd.Int64Dtype())
+        elif flat_df[col].dtype == "float64":
             non_null = flat_df[col].dropna()
             if len(non_null) > 0 and (non_null % 1 == 0).all():
                 flat_df[col] = flat_df[col].astype(pd.Int64Dtype())
@@ -63,7 +69,6 @@ def _write_chunk(fdb, rootids, path, base_columns, nested_columns):
     response = fetch_lightcurves(fdb, rootids)
     nf = build_nested_frame(response, base_columns=base_columns, nested_columns=nested_columns)
     pd.DataFrame.to_parquet(nf, path)
-
 
 def export(
     output_path,

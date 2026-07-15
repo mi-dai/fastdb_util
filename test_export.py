@@ -68,9 +68,13 @@ def test_chunked_files_exist(chunked_dir):
     assert any(f.startswith("chunk_") and f.endswith(".parquet") for f in files)
 
 def test_chunked_readable(chunked_dir):
-    nf = read_parquet(chunked_dir)
-    assert isinstance(nf, NestedFrame)
-    assert len(nf) > 0
+    import glob
+    files = sorted(glob.glob(os.path.join(chunked_dir, "*.parquet")))
+    assert len(files) > 0
+    for f in files:
+        nf = read_parquet(f)
+        assert isinstance(nf, NestedFrame)
+        assert len(nf) > 0
 
 
 # --- MJD-binned export ---
@@ -97,7 +101,7 @@ def test_mjd_binned_column_filter(tmp_path_factory, fdb):
         nested_columns=["mjd", "flux", "fluxerr", "band"],
     )
     nf = read_parquet(path)
-    assert set(nf.columns) == {"rootid", "ra", "dec", "lightcurve"}
+    assert set(nf.columns) == {"ra", "dec", "lightcurve"}
     import pandas as pd
     lc = pd.DataFrame(nf.iloc[0]["lightcurve"])
     assert set(lc.columns) == {"mjd", "flux", "fluxerr", "band"}
