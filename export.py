@@ -1,8 +1,11 @@
+import logging
 import math
 import os
 import pandas as pd
-from nested_pandas import NestedFrame,read_parquet
+from nested_pandas import NestedFrame, read_parquet
 from fastdb_client import FASTDBClient
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_rootids(fdb, **query_kwargs):
@@ -70,6 +73,7 @@ def _write_chunk(fdb, rootids, path, base_columns, nested_columns):
     nf = build_nested_frame(response, base_columns=base_columns, nested_columns=nested_columns)
     nf.to_parquet(path)
 
+
 def export(
     output_path,
     fdb=None,
@@ -79,6 +83,7 @@ def export(
     nested_columns=None,
     chunk_size=1000,
     mjd_bin_size=None,
+    log_every=100,
     **query_kwargs,
 ):
     if fdb is None:
@@ -89,14 +94,19 @@ def export(
         search_result = fetch_rootids(fdb, **query_kwargs)
         rootids = search_result["rootid"]
 
+    total = len(rootids)
+    logger.info("Total objects to export: %d", total)
+
     # Single-file path
-    if (mjd_bin_size is None and len(rootids) <= chunk_size) or len(rootids) == 0:
-        if len(rootids) == 0:
+    if (mjd_bin_size is None and total <= chunk_size) or total == 0:
+        if total == 0:
             return NestedFrame()
         _write_chunk(fdb, rootids, output_path, base_columns, nested_columns)
+        logger.info("Saved %d/%d objects", total, total)
         return read_parquet(output_path)
 
     os.makedirs(output_path, exist_ok=True)
+    saved = 0
 
     if mjd_bin_size is not None and search_result is not None:
         # Group rootids by firstdet_mjd bin
@@ -109,11 +119,17 @@ def export(
             bin_end = bin_start + mjd_bin_size
             fname = f"mjd_{bin_start:.0f}_{bin_end:.0f}.parquet"
             _write_chunk(fdb, chunk, os.path.join(output_path, fname), base_columns, nested_columns)
+            saved += len(chunk)
+            if log_every and (saved % log_every < len(chunk) or saved == total):
+                logger.info("Saved %d/%d objects", saved, total)
     else:
         # Count-based chunking
         chunks = [rootids[i:i + chunk_size] for i in range(0, len(rootids), chunk_size)]
         for i, chunk in enumerate(chunks):
             fname = f"chunk_{i:04d}.parquet"
             _write_chunk(fdb, chunk, os.path.join(output_path, fname), base_columns, nested_columns)
+            saved += len(chunk)
+            if log_every and (saved % log_every < len(chunk) or saved == total):
+                logger.info("Saved %d/%d objects", saved, total)
 
     return output_path
