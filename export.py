@@ -1,7 +1,7 @@
 import math
 import os
 import pandas as pd
-from nested_pandas import NestedFrame
+from nested_pandas import NestedFrame,read_parquet
 from fastdb_client import FASTDBClient
 
 
@@ -89,7 +89,7 @@ def export(
         if len(rootids) == 0:
             return NestedFrame()
         _write_chunk(fdb, rootids, output_path, base_columns, nested_columns)
-        return NestedFrame(pd.read_parquet(output_path))
+        return read_parquet(output_path)
 
     os.makedirs(output_path, exist_ok=True)
 
@@ -111,4 +111,4 @@ def export(
             fname = f"chunk_{i:04d}.parquet"
             _write_chunk(fdb, chunk, os.path.join(output_path, fname), base_columns, nested_columns)
 
-    return NestedFrame(pd.read_parquet(output_path))
+    return output_path
