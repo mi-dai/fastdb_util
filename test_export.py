@@ -1,6 +1,8 @@
 import glob
 import os
 import shutil
+import subprocess
+import sys
 
 import pandas as pd
 import pytest
@@ -22,6 +24,13 @@ def output_path(*parts):
     path = os.path.join(TEST_OUTPUT, *parts)
     os.makedirs(os.path.dirname(path) if "." in os.path.basename(path) else path, exist_ok=True)
     return path
+
+
+def rootids_in_dir(path):
+    rootids = set()
+    for f in glob.glob(os.path.join(path, "*.parquet")):
+        rootids.update(read_parquet(f)["rootid"])
+    return rootids
 
 
 @pytest.fixture(scope="module")
@@ -184,6 +193,107 @@ def test_multi_node_objectsearch_mjd(fdb):
     assert len(files) > 0
     for f in files:
         assert len(read_parquet(f)) > 0
+
+# --- full job-array partition correctness ---
+
+def test_full_array_bypass_covers_all_objects(fdb):
+    reference_path = output_path("array_bypass_ref")
+    shutil.rmtree(reference_path, ignore_errors=True)
+    export(reference_path, fdb=fdb, bypass_object_search=True, chunk_size=5, max_objects=10)
+    reference_rootids = rootids_in_dir(reference_path)
+
+    num_nodes = 2
+    array_path = output_path("array_bypass")
+    shutil.rmtree(array_path, ignore_errors=True)
+    for node_index in range(num_nodes):
+        export(array_path, fdb=fdb, bypass_object_search=True, chunk_size=5, max_objects=10,
+               num_nodes=num_nodes, node_index=node_index)
+
+    combined_rootids = rootids_in_dir(array_path)
+    assert combined_rootids == reference_rootids
+
+def test_full_array_objectsearch_count_covers_all_objects(fdb):
+    reference_path = output_path("array_count_ref")
+    shutil.rmtree(reference_path, ignore_errors=True)
+    export(reference_path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX, chunk_size=3)
+    reference_rootids = rootids_in_dir(reference_path)
+
+    num_nodes = 2
+    array_path = output_path("array_count")
+    shutil.rmtree(array_path, ignore_errors=True)
+    for node_index in range(num_nodes):
+        export(array_path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX,
+               chunk_size=3, num_nodes=num_nodes, node_index=node_index)
+
+    combined_rootids = rootids_in_dir(array_path)
+    assert combined_rootids == reference_rootids
+
+def test_full_array_mjd_binned_covers_all_objects_without_overlap(fdb):
+    reference_path = output_path("array_mjd_ref")
+    shutil.rmtree(reference_path, ignore_errors=True)
+    export(reference_path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX, mjd_bin_size=1.0)
+    reference_rootids = rootids_in_dir(reference_path)
+
+    num_nodes = 2
+    node_dirs = []
+    node_filenames = []
+    for node_index in range(num_nodes):
+        node_path = output_path(f"array_mjd_node{node_index}")
+        shutil.rmtree(node_path, ignore_errors=True)
+        export(node_path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX,
+               mjd_bin_size=1.0, num_nodes=num_nodes, node_index=node_index)
+        node_dirs.append(node_path)
+        node_filenames.append(set(os.listdir(node_path)))
+
+    # MJD bins are partitioned by contiguous ranges, so no bin filename should
+    # be produced by more than one node.
+    for i in range(len(node_filenames)):
+        for j in range(i + 1, len(node_filenames)):
+            assert node_filenames[i].isdisjoint(node_filenames[j])
+
+    combined_rootids = set()
+    for node_path in node_dirs:
+        combined_rootids.update(rootids_in_dir(node_path))
+    assert combined_rootids == reference_rootids
+
+
+# --- example_run.py CLI / SLURM env-var wiring ---
+
+def _run_example_run(*args, env=None):
+    script = os.path.join(os.path.dirname(__file__), "example_run.py")
+    cmd = [sys.executable, script, *args]
+    return subprocess.run(cmd, cwd=os.path.dirname(__file__), env=env,
+                          capture_output=True, text=True)
+
+def test_example_run_node_index_flag():
+    path = output_path("cli_node0")
+    shutil.rmtree(path, ignore_errors=True)
+    result = _run_example_run(
+        path, "--bypass-object-search", "--chunk-size", "5", "--max-objects", "10",
+        "--num-nodes", "2", "--node-index", "0",
+    )
+    assert result.returncode == 0, result.stderr
+    files = sorted(glob.glob(os.path.join(path, "node0000_chunk_*.parquet")))
+    assert len(files) > 0
+    for f in files:
+        assert len(read_parquet(f)) > 0
+
+def test_example_run_slurm_array_task_id_wiring():
+    # Mirrors slurm_export.sh: --node-index "$SLURM_ARRAY_TASK_ID"
+    path = output_path("cli_slurm_array")
+    shutil.rmtree(path, ignore_errors=True)
+    env = dict(os.environ, SLURM_ARRAY_TASK_ID="1")
+    result = _run_example_run(
+        path, "--bypass-object-search", "--chunk-size", "5", "--max-objects", "10",
+        "--num-nodes", "2", "--node-index", env["SLURM_ARRAY_TASK_ID"],
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    files = sorted(glob.glob(os.path.join(path, "node0001_chunk_*.parquet")))
+    assert len(files) > 0
+    for f in files:
+        assert len(read_parquet(f)) > 0
+
 
 # --- explicit rootids ---
 
