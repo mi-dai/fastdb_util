@@ -152,6 +152,27 @@ def test_max_objects_objectsearch(fdb):
     assert isinstance(nf, NestedFrame)
     assert len(nf) == 3
 
+# --- multi-node partitioning ---
+
+def test_multi_node_bypass(fdb):
+    path = output_path("node_bypass")
+    shutil.rmtree(path, ignore_errors=True)
+    export(path, fdb=fdb, bypass_object_search=True, chunk_size=5, max_objects=10, num_nodes=2, node_index=0)
+    files = sorted(glob.glob(os.path.join(path, "node0000_chunk_*.parquet")))
+    assert len(files) > 0
+    for f in files:
+        assert len(read_parquet(f)) > 0
+
+def test_multi_node_objectsearch(fdb):
+    path = output_path("node_osearch")
+    shutil.rmtree(path, ignore_errors=True)
+    export(path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX,
+           chunk_size=3, num_nodes=2, node_index=0)
+    files = sorted(glob.glob(os.path.join(path, "node0000_chunk_*.parquet")))
+    assert len(files) > 0
+    for f in files:
+        assert len(read_parquet(f)) > 0
+
 # --- explicit rootids ---
 
 def test_explicit_rootids(fdb):

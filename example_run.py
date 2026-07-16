@@ -18,6 +18,9 @@ Usage examples:
 
   # Write logs to a file
   python example_run.py out_dir/ --bypass-object-search --log-file export.log
+
+  # Run as one task in a SLURM job array (see slurm_export.sh)
+  python example_run.py out_dir/ --bypass-object-search --num-nodes 10 --node-index $SLURM_ARRAY_TASK_ID
 """
 import sys
 import argparse
@@ -42,6 +45,10 @@ def main():
                         help='Bypass objectsearch and paginate getmanyltcvs directly (exports all objects)')
     parser.add_argument('--max-objects', type=int, default=None,
                         help='Cap total objects exported (default: no limit)')
+    parser.add_argument('--num-nodes', type=int, default=1,
+                        help='Total number of nodes in the job array (default: 1)')
+    parser.add_argument('--node-index', type=int, default=0,
+                        help='Index of this node, 0-based (default: 0; use $SLURM_ARRAY_TASK_ID)')
     parser.add_argument('--log-file', default=None,
                         help='Log file name (default: log to stdout)')
     args = parser.parse_args()
@@ -59,6 +66,8 @@ def main():
         log_every=args.log_every,
         bypass_object_search=args.bypass_object_search,
         max_objects=args.max_objects,
+        num_nodes=args.num_nodes,
+        node_index=args.node_index,
     )
     if not args.bypass_object_search:
         kwargs['mjd_bin_size'] = args.mjd_bin_size
