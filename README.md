@@ -114,6 +114,23 @@ from nested_pandas import read_parquet
 nf = read_parquet('out_dir/mjd_61160_61161.parquet')
 ```
 
+### Export all objects (bypass objectsearch)
+
+`/objectsearch/realtime` only returns objects in the processed materialized view — a subset of the full database. To export everything, use `bypass_object_search=True`, which paginates `getmanyltcvs` directly with `limit`/`offset`:
+
+```python
+path = export('all_objects/', bypass_object_search=True, chunk_size=1000)
+# → all_objects/chunk_0000.parquet, chunk_0001.parquet, …
+```
+
+MJD binning is not available in this mode (the API does not return `firstdet_mjd` without an objectsearch call). Use `max_objects` to cap the total for testing:
+
+```python
+path = export('sample/', bypass_object_search=True, chunk_size=100, max_objects=500)
+```
+
+`max_objects` also works in the normal objectsearch mode to limit how many objects from the search result are exported.
+
 ### Logging
 
 Progress is emitted via Python's `logging` module. Enable it by configuring the root logger before calling `export`:

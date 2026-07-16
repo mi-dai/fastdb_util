@@ -133,6 +133,25 @@ def test_mjd_binned_with_chunk_size(fdb):
         nf = read_parquet(os.path.join(path, f))
         assert len(nf) > 0
 
+# --- bypass_object_search ---
+
+def test_bypass_object_search(fdb):
+    path = output_path("bypass")
+    shutil.rmtree(path, ignore_errors=True)
+    result = export(path, fdb=fdb, bypass_object_search=True, chunk_size=5, max_objects=10)
+    assert isinstance(result, str)
+    files = sorted(glob.glob(os.path.join(path, "chunk_*.parquet")))
+    assert len(files) == 2
+    for f in files:
+        nf = read_parquet(f)
+        assert len(nf) > 0
+
+def test_max_objects_objectsearch(fdb):
+    path = output_path("max_objects", "out.parquet")
+    nf = export(path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX, max_objects=3)
+    assert isinstance(nf, NestedFrame)
+    assert len(nf) == 3
+
 # --- explicit rootids ---
 
 def test_explicit_rootids(fdb):

@@ -12,15 +12,16 @@ def fetch_rootids(fdb, **query_kwargs):
     return fdb.post("/objectsearch/realtime", json=query_kwargs)
 
 
-def fetch_lightcurves(fdb, rootids):
-    return fdb.post(
-        "/ltcv/getmanyltcvs/realtime",
-        json={
-            "objids": rootids,
-            "include_source_positions": True,
-            "return_object_info": True,
-        },
-    )
+def fetch_lightcurves(fdb, rootids=None, limit=None, offset=None):
+    body = {"include_source_positions": True, "return_object_info": True}
+    if rootids is not None:
+        body["objids"] = rootids
+    else:
+        if limit is not None:
+            body["limit"] = limit
+        if offset is not None:
+            body["offset"] = offset
+    return fdb.post("/ltcv/getmanyltcvs/realtime", json=body)
 
 
 def build_nested_frame(response, base_columns=None, nested_columns=None):
@@ -69,7 +70,7 @@ def build_nested_frame(response, base_columns=None, nested_columns=None):
 
 
 def _write_chunk(fdb, rootids, path, base_columns, nested_columns):
-    response = fetch_lightcurves(fdb, rootids)
+    response = fetch_lightcurves(fdb, rootids=rootids)
     nf = build_nested_frame(response, base_columns=base_columns, nested_columns=nested_columns)
     nf.to_parquet(path)
 
@@ -84,15 +85,46 @@ def export(
     chunk_size=1000,
     mjd_bin_size=None,
     log_every=100,
+    bypass_object_search=False,
+    max_objects=None,
     **query_kwargs,
 ):
     if fdb is None:
         fdb = FASTDBClient(env)
 
+    if bypass_object_search:
+        if chunk_size > 1000:
+            logger.warning("chunk_size %d > 1000 may not work as expected with bypass_object_search", chunk_size)
+        os.makedirs(output_path, exist_ok=True)
+        offset = 0
+        chunk_idx = 0
+        saved = 0
+        while True:
+            limit = chunk_size if max_objects is None else min(chunk_size, max_objects - saved)
+            response = fetch_lightcurves(fdb, limit=limit, offset=offset)
+            if not response.get("ltcvs"):
+                break
+            nf = build_nested_frame(response, base_columns=base_columns, nested_columns=nested_columns)
+            nf.to_parquet(os.path.join(output_path, f"chunk_{chunk_idx:04d}.parquet"))
+            saved += len(nf)
+            logger.info("Saved %d objects so far (chunk %d)", saved, chunk_idx)
+            if max_objects is not None and saved >= max_objects:
+                break
+            offset += chunk_size
+            chunk_idx += 1
+        return output_path
+
     search_result = None
     if rootids is None:
         search_result = fetch_rootids(fdb, **query_kwargs)
         rootids = search_result["rootid"]
+
+    if max_objects is not None:
+        rootids = rootids[:max_objects]
+        if search_result is not None:
+            for key in search_result:
+                if isinstance(search_result[key], list):
+                    search_result[key] = search_result[key][:max_objects]
 
     total = len(rootids)
     logger.info("Total objects to export: %d", total)
