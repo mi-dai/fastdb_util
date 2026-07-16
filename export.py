@@ -157,55 +157,67 @@ def export(
                 if isinstance(search_result[key], list):
                     search_result[key] = search_result[key][:max_objects]
 
-    # Partition rootids across nodes
-    if num_nodes > 1:
-        total_all = len(rootids)
-        per_node = math.ceil(total_all / num_nodes)
-        start = node_index * per_node
-        end = min((node_index + 1) * per_node, total_all)
-        rootids = rootids[start:end]
-        if search_result is not None:
-            for key in search_result:
-                if isinstance(search_result[key], list):
-                    search_result[key] = search_result[key][start:end]
-        logger.info("Node %d/%d: %d/%d objects", node_index + 1, num_nodes, len(rootids), total_all)
-
     total = len(rootids)
     logger.info("Total objects to export: %d", total)
 
-    # Single-file path
-    if (mjd_bin_size is None and total <= chunk_size) or total == 0:
-        if total == 0:
-            return NestedFrame()
-        _write_chunk(fdb, rootids, output_path, base_columns, nested_columns)
-        logger.info("Saved %d/%d objects", total, total)
-        return read_parquet(output_path)
-
-    os.makedirs(output_path, exist_ok=True)
-    saved = 0
-
     if mjd_bin_size is not None and search_result is not None:
-        # Group rootids by firstdet_mjd bin, then sub-chunk by count if needed
+        # Group all rootids into MJD bins first
         mjds = search_result["firstdet_mjd"]
         bins = {}
         for rid, mjd in zip(rootids, mjds):
             bin_start = math.floor(mjd / mjd_bin_size) * mjd_bin_size
             bins.setdefault(bin_start, []).append(rid)
-        for bin_start, bin_rids in sorted(bins.items()):
+
+        # In multi-node mode, partition bins across nodes (contiguous MJD ranges)
+        sorted_bin_keys = sorted(bins.keys())
+        if num_nodes > 1:
+            per_node = math.ceil(len(sorted_bin_keys) / num_nodes)
+            start = node_index * per_node
+            end = min((node_index + 1) * per_node, len(sorted_bin_keys))
+            sorted_bin_keys = sorted_bin_keys[start:end]
+            logger.info("Node %d/%d: %d/%d MJD bins", node_index + 1, num_nodes, len(sorted_bin_keys), len(bins))
+
+        if not sorted_bin_keys:
+            return output_path if os.path.isdir(output_path) else NestedFrame()
+
+        os.makedirs(output_path, exist_ok=True)
+        saved = 0
+        node_total = sum(len(bins[k]) for k in sorted_bin_keys)
+        for bin_start in sorted_bin_keys:
+            bin_rids = bins[bin_start]
             bin_end = bin_start + mjd_bin_size
             sub_chunks = [bin_rids[i:i + chunk_size] for i in range(0, len(bin_rids), chunk_size)]
             for j, chunk in enumerate(sub_chunks):
                 if len(sub_chunks) == 1:
-                    fname = f"{prefix}mjd_{bin_start:.0f}_{bin_end:.0f}.parquet"
+                    fname = f"mjd_{bin_start:.0f}_{bin_end:.0f}.parquet"
                 else:
-                    fname = f"{prefix}mjd_{bin_start:.0f}_{bin_end:.0f}_{j:04d}.parquet"
+                    fname = f"mjd_{bin_start:.0f}_{bin_end:.0f}_{j:04d}.parquet"
                 _write_chunk(fdb, chunk, os.path.join(output_path, fname), base_columns, nested_columns)
                 saved += len(chunk)
-                if log_every and (saved % log_every < len(chunk) or saved == total):
-                    logger.info("Saved %d/%d objects", saved, total)
+                if log_every and (saved % log_every < len(chunk) or saved == node_total):
+                    logger.info("Saved %d/%d objects", saved, node_total)
     else:
-        # Count-based chunking
-        chunks = [rootids[i:i + chunk_size] for i in range(0, len(rootids), chunk_size)]
+        # Count-based chunking: partition rootids across nodes by index
+        if num_nodes > 1:
+            per_node = math.ceil(total / num_nodes)
+            start = node_index * per_node
+            end = min((node_index + 1) * per_node, total)
+            rootids = rootids[start:end]
+            logger.info("Node %d/%d: %d/%d objects", node_index + 1, num_nodes, len(rootids), total)
+
+        total = len(rootids)
+
+        # Single-file path
+        if total == 0:
+            return NestedFrame()
+        if total <= chunk_size:
+            _write_chunk(fdb, rootids, output_path, base_columns, nested_columns)
+            logger.info("Saved %d/%d objects", total, total)
+            return read_parquet(output_path)
+
+        os.makedirs(output_path, exist_ok=True)
+        saved = 0
+        chunks = [rootids[i:i + chunk_size] for i in range(0, total, chunk_size)]
         for i, chunk in enumerate(chunks):
             fname = f"{prefix}chunk_{i:04d}.parquet"
             _write_chunk(fdb, chunk, os.path.join(output_path, fname), base_columns, nested_columns)

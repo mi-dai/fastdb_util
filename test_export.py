@@ -163,12 +163,24 @@ def test_multi_node_bypass(fdb):
     for f in files:
         assert len(read_parquet(f)) > 0
 
-def test_multi_node_objectsearch(fdb):
-    path = output_path("node_osearch")
+def test_multi_node_objectsearch_count(fdb):
+    # No mjd_bin_size: partitions by rootid index, files get node prefix
+    path = output_path("node_osearch_count")
     shutil.rmtree(path, ignore_errors=True)
     export(path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX,
            chunk_size=3, num_nodes=2, node_index=0)
     files = sorted(glob.glob(os.path.join(path, "node0000_chunk_*.parquet")))
+    assert len(files) > 0
+    for f in files:
+        assert len(read_parquet(f)) > 0
+
+def test_multi_node_objectsearch_mjd(fdb):
+    # mjd_bin_size: partitions by MJD bin, no node prefix (bins are unique)
+    path = output_path("node_osearch_mjd")
+    shutil.rmtree(path, ignore_errors=True)
+    export(path, fdb=fdb, firstdet_mjd_min=MJD_MIN, firstdet_mjd_max=MJD_MAX,
+           mjd_bin_size=1.0, chunk_size=100, num_nodes=2, node_index=0)
+    files = sorted(glob.glob(os.path.join(path, "mjd_*.parquet")))
     assert len(files) > 0
     for f in files:
         assert len(read_parquet(f)) > 0
