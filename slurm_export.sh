@@ -3,6 +3,7 @@
 #SBATCH --account=YOUR_ACCOUNT
 #SBATCH --qos=regular
 #SBATCH --constraint=cpu
+#SBATCH --licenses=cfs
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -11,10 +12,10 @@
 #SBATCH --output=logs/export_%A_%a.out
 
 NUM_NODES=10
-OUT_DIR=/pscratch/sd/m/mdai/fastdb_export/
+OUT_DIR=/pscratch/sd/X/YOUR_USERNAME/fastdb_export/
 
-module load python
-conda activate fastdb
+source /global/cfs/cdirs/lsst/groups/TD/setup_td.sh
+export PYTHONPATH=/dvs_ro/cfs/cdirs/desc-td/SOFTWARE/fastdb_deployment/fastdb_client:$PYTHONPATH
 
 python example_run.py "$OUT_DIR" \
     --bypass-object-search \
